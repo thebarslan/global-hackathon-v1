@@ -3,9 +3,7 @@ const mongoose = require("mongoose");
 const connectDB = async () => {
    try {
       // URL encode the password to handle special characters
-      const mongoUri =
-         process.env.MONGODB_URI ||
-         "mongodb+srv://barslanforbusiness:159357456bB%21@actahackathoncluster.nlm1pz5.mongodb.net/acta-barslan-product?retryWrites=true&w=majority&appName=ActaHackathonCluster";
+      const mongoUri = process.env.MONGODB_URI || "";
 
       const conn = await mongoose.connect(mongoUri, {
          useNewUrlParser: true,
