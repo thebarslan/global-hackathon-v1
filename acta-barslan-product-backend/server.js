@@ -34,6 +34,10 @@ app.use(
    })
 );
 
+// Static file serving for reports
+const path = require("path");
+app.use("/reports", express.static(path.join(__dirname, "reports")));
+
 // Rate limiting
 const limiter = rateLimit({
    windowMs: 15 * 60 * 1000, // 15 minutes

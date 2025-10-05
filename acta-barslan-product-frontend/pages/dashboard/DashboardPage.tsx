@@ -1,3 +1,4 @@
+"use client";
 import {
    Card,
    CardContent,
@@ -16,8 +17,96 @@ import {
    Plus,
    Zap,
 } from "lucide-react";
+import { useState } from "react";
+import { Analysis } from "@/types/analysis";
+import { CreateBrandRequest } from "@/types/brand";
+import { CreateAnalysisRequest } from "@/types/analysis";
+import { AddBrandModal } from "@/components/modals/AddBrandModal";
+import { StartAnalysisModal } from "@/components/modals/StartAnalysisModal";
+import { useBrands } from "@/contexts/BrandsContext";
+import { useAnalysis } from "@/contexts/AnalysisContext";
+import { useReports } from "@/contexts/ReportsContext";
+import { useToast } from "@/components/ui/toast";
+import { LoadingSpinner } from "@/components/ui/loading";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function DashboardPage() {
+   const [isAddBrandModalOpen, setIsAddBrandModalOpen] = useState(false);
+   const [isStartAnalysisModalOpen, setIsStartAnalysisModalOpen] =
+      useState(false);
+
+   const { brands, createBrand, isLoading: brandsLoading } = useBrands();
+   const {
+      analyses,
+      createAnalysis,
+      isLoading: analysesLoading,
+   } = useAnalysis();
+   const { reports, isLoading: reportsLoading } = useReports();
+   const { success, error } = useToast();
+   const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+   const isLoading =
+      brandsLoading || analysesLoading || reportsLoading || authLoading;
+
+   // Show loading while checking authentication
+   if (authLoading) {
+      return (
+         <div className="min-h-screen flex items-center justify-center">
+            <LoadingSpinner size="lg" text="Loading dashboard..." />
+         </div>
+      );
+   }
+
+   // Redirect to login if not authenticated
+   if (!isAuthenticated) {
+      if (typeof window !== "undefined") {
+         window.location.href = "/login";
+      }
+      return null;
+   }
+
+   const handleAddBrand = async (data: CreateBrandRequest) => {
+      try {
+         await createBrand(data);
+         setIsAddBrandModalOpen(false);
+      } catch (err) {
+         console.error("Failed to add brand:", err);
+      }
+   };
+
+   const handleStartAnalysis = async (data: CreateAnalysisRequest) => {
+      try {
+         await createAnalysis(data);
+         setIsStartAnalysisModalOpen(false);
+      } catch (err) {
+         console.error("Failed to start analysis:", err);
+      }
+   };
+
+   // Calculate stats from real data
+   const totalBrands = brands.length;
+   const totalAnalyses = analyses.length;
+   const totalReports = reports.length;
+   const completedAnalyses = analyses.filter((a) => a.status === "completed");
+   const positiveSentiment =
+      completedAnalyses.length > 0
+         ? Math.round(
+              (completedAnalyses.filter(
+                 (a) => a.averageSentiment === "positive"
+              ).length /
+                 completedAnalyses.length) *
+                 100
+           )
+         : 0;
+
+   if (isLoading) {
+      return (
+         <div className="flex items-center justify-center min-h-[400px]">
+            <LoadingSpinner text="Loading dashboard..." size="lg" />
+         </div>
+      );
+   }
+
    return (
       <div className="space-y-6">
          {/* Header */}
@@ -41,11 +130,19 @@ export function DashboardPage() {
                   </CardDescription>
                </CardHeader>
                <CardContent className="space-y-3">
-                  <Button className="w-full justify-start" variant="outline">
+                  <Button
+                     className="w-full justify-start"
+                     variant="outline"
+                     onClick={() => setIsAddBrandModalOpen(true)}
+                  >
                      <Building2 className="mr-2 h-4 w-4" />
                      Add New Brand
                   </Button>
-                  <Button className="w-full justify-start" variant="outline">
+                  <Button
+                     className="w-full justify-start"
+                     variant="outline"
+                     onClick={() => setIsStartAnalysisModalOpen(true)}
+                  >
                      <Zap className="mr-2 h-4 w-4" />
                      Start Analysis
                   </Button>
@@ -65,7 +162,7 @@ export function DashboardPage() {
                   <div className="grid grid-cols-2 gap-4">
                      <div className="text-center">
                         <div className="text-2xl font-bold text-primary">
-                           12
+                           {totalBrands}
                         </div>
                         <div className="text-sm text-muted-foreground">
                            Brands
@@ -73,7 +170,7 @@ export function DashboardPage() {
                      </div>
                      <div className="text-center">
                         <div className="text-2xl font-bold text-primary">
-                           48
+                           {totalAnalyses}
                         </div>
                         <div className="text-sm text-muted-foreground">
                            Analyses
@@ -81,7 +178,7 @@ export function DashboardPage() {
                      </div>
                      <div className="text-center">
                         <div className="text-2xl font-bold text-primary">
-                           24
+                           {totalReports}
                         </div>
                         <div className="text-sm text-muted-foreground">
                            Reports
@@ -89,7 +186,7 @@ export function DashboardPage() {
                      </div>
                      <div className="text-center">
                         <div className="text-2xl font-bold text-green-600">
-                           85%
+                           {positiveSentiment}%
                         </div>
                         <div className="text-sm text-muted-foreground">
                            Positive
@@ -112,60 +209,67 @@ export function DashboardPage() {
                </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-               <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                     <div>
-                        <p className="font-medium">
-                           Analysis completed for Yahoo
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           2 minutes ago
-                        </p>
+               {completedAnalyses
+                  .slice(0, 3)
+                  .map((analysis: Analysis, index: number) => (
+                     <div key={analysis.id}>
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-3">
+                              <div
+                                 className={`h-2 w-2 rounded-full ${
+                                    analysis.averageSentiment === "positive"
+                                       ? "bg-green-500"
+                                       : analysis.averageSentiment === "neutral"
+                                       ? "bg-blue-500"
+                                       : analysis.averageSentiment ===
+                                         "negative"
+                                       ? "bg-red-500"
+                                       : "bg-orange-500"
+                                 }`}
+                              ></div>
+                              <div>
+                                 <p className="font-medium">
+                                    Analysis completed for {analysis.brandName}
+                                 </p>
+                                 <p className="text-sm text-muted-foreground">
+                                    {analysis.completedAt
+                                       ? new Date(
+                                            analysis.completedAt
+                                         ).toLocaleString()
+                                       : "Recently completed"}
+                                 </p>
+                              </div>
+                           </div>
+                           <Badge
+                              variant="secondary"
+                              className={
+                                 analysis.averageSentiment === "positive"
+                                    ? "bg-green-600"
+                                    : analysis.averageSentiment === "neutral"
+                                    ? "bg-blue-600"
+                                    : analysis.averageSentiment === "negative"
+                                    ? "bg-red-600"
+                                    : "bg-orange-600"
+                              }
+                           >
+                              {analysis.averageSentiment
+                                 .charAt(0)
+                                 .toUpperCase() +
+                                 analysis.averageSentiment.slice(1)}
+                           </Badge>
+                        </div>
+                        {index < 2 && <Separator />}
                      </div>
-                  </div>
-                  <Badge variant="secondary">Positive</Badge>
-               </div>
-
-               <Separator />
-
-               <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                     <div>
-                        <p className="font-medium">
-                           New brand added: Microsoft
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           1 hour ago
-                        </p>
-                     </div>
-                  </div>
-                  <Badge variant="outline">New</Badge>
-               </div>
-
-               <Separator />
-
-               <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                     <div>
-                        <p className="font-medium">
-                           Report generated for Apple
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           3 hours ago
-                        </p>
-                     </div>
-                  </div>
-                  <Badge variant="secondary">Report</Badge>
-               </div>
+                  ))}
             </CardContent>
          </Card>
 
          {/* Quick Access */}
          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <Card
+               className="hover:shadow-md transition-shadow cursor-pointer"
+               onClick={() => (window.location.href = "/dashboard/brands")}
+            >
                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
                      <Building2 className="h-5 w-5" />
@@ -182,7 +286,10 @@ export function DashboardPage() {
                </CardContent>
             </Card>
 
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <Card
+               className="hover:shadow-md transition-shadow cursor-pointer"
+               onClick={() => (window.location.href = "/dashboard/analysis")}
+            >
                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
                      <BarChart3 className="h-5 w-5" />
@@ -197,7 +304,10 @@ export function DashboardPage() {
                </CardContent>
             </Card>
 
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <Card
+               className="hover:shadow-md transition-shadow cursor-pointer"
+               onClick={() => (window.location.href = "/dashboard/reports")}
+            >
                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
                      <FileText className="h-5 w-5" />
@@ -212,6 +322,20 @@ export function DashboardPage() {
                </CardContent>
             </Card>
          </div>
+
+         {/* Modals */}
+         <AddBrandModal
+            isOpen={isAddBrandModalOpen}
+            onClose={() => setIsAddBrandModalOpen(false)}
+            onSubmit={handleAddBrand}
+         />
+
+         <StartAnalysisModal
+            isOpen={isStartAnalysisModalOpen}
+            onClose={() => setIsStartAnalysisModalOpen(false)}
+            onSubmit={handleStartAnalysis}
+            brands={brands}
+         />
       </div>
    );
 }

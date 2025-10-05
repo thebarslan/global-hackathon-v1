@@ -6,6 +6,7 @@ const authRoutes = require("./auth");
 const productRoutes = require("./products");
 const brandRoutes = require("./brands");
 const analysisRoutes = require("./analyses");
+const reportRoutes = require("./reports");
 
 // Health check endpoint
 router.get("/health", (req, res) => {
@@ -26,6 +27,7 @@ router.use("/auth", authRoutes);
 router.use("/products", productRoutes);
 router.use("/brands", brandRoutes);
 router.use("/analyses", analysisRoutes);
+router.use("/reports", reportRoutes);
 
 // 404 handler for API routes
 router.use("*", (req, res) => {
@@ -40,6 +42,8 @@ router.use("*", (req, res) => {
          "POST /api/brands",
          "GET /api/analyses",
          "POST /api/analyses",
+         "GET /api/reports",
+         "POST /api/reports",
       ],
    });
 });

@@ -22,6 +22,17 @@ router.post(
    validate,
    analysisController.createAnalysis
 );
+
+// Get all analyses for the authenticated user (alias for /user)
+router.get(
+   "/",
+   paginationValidation,
+   statusValidation,
+   sentimentValidation,
+   validate,
+   analysisController.getUserAnalyses
+);
+
 router.get("/stats", analysisController.getAnalysisStats);
 router.get("/insights", analysisController.getAnalysisInsights);
 router.get(

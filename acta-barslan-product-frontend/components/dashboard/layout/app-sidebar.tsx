@@ -3,12 +3,8 @@ import {
    Building2,
    Home,
    LogOut,
-   Plus,
-   Search,
-   Settings,
    TrendingUp,
    Users,
-   Zap,
 } from "lucide-react";
 
 import {
@@ -48,20 +44,6 @@ const mainItems = [
    },
 ];
 
-// Quick actions
-const quickActions = [
-   {
-      title: "Add Brand",
-      url: "/dashboard/brands/new",
-      icon: Plus,
-   },
-   {
-      title: "New Analysis",
-      url: "/dashboard/analysis/new",
-      icon: Zap,
-   },
-];
-
 // Settings section
 const settingsItems = [
    {
@@ -95,25 +77,6 @@ export function AppSidebar() {
                <SidebarGroupContent>
                   <SidebarMenu>
                      {mainItems.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                           <SidebarMenuButton asChild>
-                              <a href={item.url}>
-                                 <item.icon />
-                                 <span>{item.title}</span>
-                              </a>
-                           </SidebarMenuButton>
-                        </SidebarMenuItem>
-                     ))}
-                  </SidebarMenu>
-               </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* Quick Actions */}
-            <SidebarGroup>
-               <SidebarGroupLabel>Quick Actions</SidebarGroupLabel>
-               <SidebarGroupContent>
-                  <SidebarMenu>
-                     {quickActions.map((item) => (
                         <SidebarMenuItem key={item.title}>
                            <SidebarMenuButton asChild>
                               <a href={item.url}>

@@ -61,6 +61,50 @@ const userSchema = new mongoose.Schema(
          zipCode: String,
          country: String,
       },
+      subscription: {
+         isSubscribed: {
+            type: Boolean,
+            default: false,
+         },
+         plan: {
+            type: String,
+            enum: ["free", "basic", "premium", "enterprise"],
+            default: "free",
+         },
+         startDate: Date,
+         endDate: Date,
+         autoRenew: {
+            type: Boolean,
+            default: false,
+         },
+         status: {
+            type: String,
+            enum: ["active", "expired", "cancelled", "pending"],
+            default: "active",
+         },
+         features: {
+            maxBrands: {
+               type: Number,
+               default: 3,
+            },
+            maxAnalyses: {
+               type: Number,
+               default: 10,
+            },
+            maxReports: {
+               type: Number,
+               default: 5,
+            },
+            redditApiCalls: {
+               type: Number,
+               default: 100,
+            },
+            geminiApiCalls: {
+               type: Number,
+               default: 50,
+            },
+         },
+      },
    },
    {
       timestamps: true,

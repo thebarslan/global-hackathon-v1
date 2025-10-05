@@ -1,3 +1,5 @@
+"use client";
+import { useRouter } from "next/navigation";
 import {
    Card,
    CardContent,
@@ -12,7 +14,6 @@ import { Separator } from "@/components/ui/separator";
 import {
    FileText,
    Download,
-   Share2,
    Plus,
    Search,
    Calendar,
@@ -22,8 +23,109 @@ import {
    Trash2,
    Filter,
 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Report, CreateReportRequest } from "@/types/report";
+import { GenerateReportModal } from "@/components/modals/GenerateReportModal";
+import { useReports } from "@/contexts/ReportsContext";
+import { useAnalysis } from "@/contexts/AnalysisContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/components/ui/toast";
+import { LoadingSpinner } from "@/components/ui/loading";
+import {
+   Pagination,
+   PaginationContent,
+   PaginationItem,
+   PaginationLink,
+   PaginationNext,
+   PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export function ReportsPage() {
+   const router = useRouter();
+   const [isGenerateReportModalOpen, setIsGenerateReportModalOpen] =
+      useState(false);
+   const [searchTerm, setSearchTerm] = useState("");
+   const [reportsPage, setReportsPage] = useState(1);
+   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
+
+   const {
+      reports,
+      createReport,
+      downloadReport,
+      searchReports,
+      isLoading: reportsLoading,
+   } = useReports();
+   const { analyses, isLoading: analysesLoading } = useAnalysis();
+   const { isAuthenticated, isLoading: authLoading } = useAuth();
+   const { success, error } = useToast();
+
+   const isLoading = reportsLoading || analysesLoading || authLoading;
+
+   // Redirect to login if not authenticated (only after auth loading is complete)
+   useEffect(() => {
+      if (!authLoading && !isAuthenticated) {
+         router.push("/login");
+         return;
+      }
+   }, [isAuthenticated, authLoading, router]);
+
+   // Update filtered reports when reports change
+   useEffect(() => {
+      if (searchTerm.trim() === "") {
+         setFilteredReports(reports);
+      } else {
+         setFilteredReports(searchReports(searchTerm));
+      }
+   }, [reports, searchTerm, searchReports]);
+
+   const handleGenerateReport = async (data: CreateReportRequest) => {
+      try {
+         await createReport(data);
+         setIsGenerateReportModalOpen(false);
+      } catch (err) {
+         console.error("Failed to generate report:", err);
+      }
+   };
+
+   const handleViewReport = (reportId: string) => {
+      router.push(`/dashboard/reports/${reportId}`);
+   };
+
+   const handleDownloadReport = async (reportId: string) => {
+      try {
+         await downloadReport(reportId);
+      } catch (err) {
+         console.error("Failed to download report:", err);
+      }
+   };
+
+   // Calculate stats from real data
+   const totalReports = reports.length;
+   const completedReports = reports.filter(
+      (r) => r.status === "completed"
+   ).length;
+   const generatingReports = reports.filter(
+      (r) => r.status === "generating"
+   ).length;
+   const failedReports = reports.filter((r) => r.status === "failed").length;
+
+   const handleDeleteReport = (reportId: string) => {
+      console.log("Deleting report:", reportId);
+      // TODO: Implement API call to delete report
+   };
+
+   const handleSearch = (term: string) => {
+      setSearchTerm(term);
+   };
+
+   if (isLoading) {
+      return (
+         <div className="flex items-center justify-center min-h-[400px]">
+            <LoadingSpinner text="Loading reports..." size="lg" />
+         </div>
+      );
+   }
+
    return (
       <div className="space-y-6">
          {/* Header */}
@@ -34,7 +136,10 @@ export function ReportsPage() {
                   Generate and manage your analysis reports
                </p>
             </div>
-            <Button className="flex items-center gap-2">
+            <Button
+               className="flex items-center gap-2"
+               onClick={() => setIsGenerateReportModalOpen(true)}
+            >
                <Plus className="h-4 w-4" />
                Generate Report
             </Button>
@@ -47,7 +152,7 @@ export function ReportsPage() {
                   <div className="flex items-center gap-2">
                      <FileText className="h-5 w-5 text-primary" />
                      <div>
-                        <p className="text-2xl font-bold">24</p>
+                        <p className="text-2xl font-bold">{totalReports}</p>
                         <p className="text-sm text-muted-foreground">
                            Total Reports
                         </p>
@@ -61,7 +166,7 @@ export function ReportsPage() {
                   <div className="flex items-center gap-2">
                      <Download className="h-5 w-5 text-green-600" />
                      <div>
-                        <p className="text-2xl font-bold">18</p>
+                        <p className="text-2xl font-bold">{completedReports}</p>
                         <p className="text-sm text-muted-foreground">
                            Downloaded
                         </p>
@@ -73,10 +178,12 @@ export function ReportsPage() {
             <Card>
                <CardContent className="p-6">
                   <div className="flex items-center gap-2">
-                     <Share2 className="h-5 w-5 text-blue-600" />
+                     <FileText className="h-5 w-5 text-blue-600" />
                      <div>
-                        <p className="text-2xl font-bold">12</p>
-                        <p className="text-sm text-muted-foreground">Shared</p>
+                        <p className="text-2xl font-bold">{completedReports}</p>
+                        <p className="text-sm text-muted-foreground">
+                           Available
+                        </p>
                      </div>
                   </div>
                </CardContent>
@@ -87,7 +194,9 @@ export function ReportsPage() {
                   <div className="flex items-center gap-2">
                      <Calendar className="h-5 w-5 text-orange-600" />
                      <div>
-                        <p className="text-2xl font-bold">5</p>
+                        <p className="text-2xl font-bold">
+                           {generatingReports}
+                        </p>
                         <p className="text-sm text-muted-foreground">
                            This Week
                         </p>
@@ -107,7 +216,12 @@ export function ReportsPage() {
             </CardHeader>
             <CardContent>
                <div className="flex gap-4">
-                  <Input placeholder="Search reports..." className="flex-1" />
+                  <Input
+                     placeholder="Search reports..."
+                     className="flex-1"
+                     value={searchTerm}
+                     onChange={(e) => handleSearch(e.target.value)}
+                  />
                   <Button variant="outline" className="flex items-center gap-2">
                      <Filter className="h-4 w-4" />
                      Filter
@@ -126,104 +240,64 @@ export function ReportsPage() {
                <CardDescription>Your latest generated reports</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">
-                              Yahoo Brand Analysis Report
-                           </p>
-                           <p className="text-sm text-muted-foreground">
-                              Generated 2 minutes ago • 1,234 posts analyzed
-                           </p>
+               {filteredReports.slice(0, 3).map((report: Report) => (
+                  <div key={report.id} className="p-4 rounded-lg border">
+                     <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                           <Building2 className="h-5 w-5 text-primary" />
+                           <div>
+                              <p className="font-medium">{report.title}</p>
+                              <p className="text-sm text-muted-foreground">
+                                 Generated:{" "}
+                                 {new Date(report.createdAt).toLocaleString()} •{" "}
+                                 {report.summary.analyzedPosts} posts analyzed
+                              </p>
+                           </div>
                         </div>
+                        <Badge
+                           variant="default"
+                           className={
+                              report.summary.averageSentiment === "positive"
+                                 ? "bg-green-600"
+                                 : report.summary.averageSentiment === "neutral"
+                                 ? "bg-blue-600"
+                                 : report.summary.averageSentiment ===
+                                   "negative"
+                                 ? "bg-red-600"
+                                 : "bg-orange-600"
+                           }
+                        >
+                           {report.summary.averageSentiment
+                              .charAt(0)
+                              .toUpperCase() +
+                              report.summary.averageSentiment.slice(1)}
+                        </Badge>
                      </div>
-                     <Badge variant="default" className="bg-green-600">
-                        Positive
-                     </Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Button size="sm" variant="outline">
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4 mr-1" />
-                        Download PDF
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Share2 className="h-4 w-4 mr-1" />
-                        Share
-                     </Button>
-                  </div>
-               </div>
-
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">
-                              Microsoft Brand Analysis Report
-                           </p>
-                           <p className="text-sm text-muted-foreground">
-                              Generated 1 hour ago • 856 posts analyzed
-                           </p>
-                        </div>
+                     <div className="flex items-center gap-2">
+                        <Button
+                           size="sm"
+                           variant="outline"
+                           onClick={() => handleViewReport(report.id)}
+                        >
+                           <Eye className="h-4 w-4 mr-1" />
+                           View
+                        </Button>
+                        <Button
+                           size="sm"
+                           variant="outline"
+                           onClick={() => handleDownloadReport(report.id)}
+                        >
+                           <Download className="h-4 w-4 mr-1" />
+                           Download PDF
+                        </Button>
                      </div>
-                     <Badge variant="default" className="bg-blue-600">
-                        Neutral
-                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2">
-                     <Button size="sm" variant="outline">
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4 mr-1" />
-                        Download PDF
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Share2 className="h-4 w-4 mr-1" />
-                        Share
-                     </Button>
-                  </div>
-               </div>
-
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">
-                              Apple Brand Analysis Report
-                           </p>
-                           <p className="text-sm text-muted-foreground">
-                              Generated 3 hours ago • 2,156 posts analyzed
-                           </p>
-                        </div>
-                     </div>
-                     <Badge variant="default" className="bg-green-600">
-                        Positive
-                     </Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Button size="sm" variant="outline">
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4 mr-1" />
-                        Download PDF
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Share2 className="h-4 w-4 mr-1" />
-                        Share
-                     </Button>
-                  </div>
-               </div>
+               ))}
+               {filteredReports.length === 0 && (
+                  <p className="text-muted-foreground text-center py-4">
+                     No reports found.
+                  </p>
+               )}
             </CardContent>
          </Card>
 
@@ -250,7 +324,16 @@ export function ReportsPage() {
                            </p>
                         </div>
                      </div>
-                     <Button size="sm" className="w-full">
+                     <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                           handleGenerateReport({
+                              analysisId: "analysis1",
+                              type: "executive_summary",
+                           })
+                        }
+                     >
                         Generate Report
                      </Button>
                   </div>
@@ -265,7 +348,16 @@ export function ReportsPage() {
                            </p>
                         </div>
                      </div>
-                     <Button size="sm" className="w-full">
+                     <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                           handleGenerateReport({
+                              analysisId: "analysis1",
+                              type: "detailed_analysis",
+                           })
+                        }
+                     >
                         Generate Report
                      </Button>
                   </div>
@@ -285,86 +377,159 @@ export function ReportsPage() {
                </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <FileText className="h-4 w-4 text-primary" />
-                     <div>
-                        <p className="font-medium">
-                           Google Brand Analysis Report
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           Generated 1 day ago
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-green-600">
-                        Positive
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4" />
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Trash2 className="h-4 w-4" />
-                     </Button>
-                  </div>
-               </div>
+               {(() => {
+                  const itemsPerPage = 10;
+                  const totalPages = Math.ceil(
+                     filteredReports.length / itemsPerPage
+                  );
+                  const startIndex = (reportsPage - 1) * itemsPerPage;
+                  const endIndex = startIndex + itemsPerPage;
+                  const paginatedReports = filteredReports.slice(
+                     startIndex,
+                     endIndex
+                  );
 
-               <Separator />
+                  return (
+                     <>
+                        {paginatedReports.map((report: Report) => (
+                           <div
+                              key={report.id}
+                              className="flex items-center justify-between p-3 rounded-lg border"
+                           >
+                              <div className="flex items-center gap-3">
+                                 <FileText className="h-4 w-4 text-primary" />
+                                 <div>
+                                    <p className="font-medium">
+                                       {report.title}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                       Generated:{" "}
+                                       {new Date(
+                                          report.createdAt
+                                       ).toLocaleDateString()}
+                                    </p>
+                                 </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                 <Badge
+                                    variant="default"
+                                    className={
+                                       report.summary.averageSentiment ===
+                                       "positive"
+                                          ? "bg-green-600"
+                                          : report.summary.averageSentiment ===
+                                            "neutral"
+                                          ? "bg-blue-600"
+                                          : report.summary.averageSentiment ===
+                                            "negative"
+                                          ? "bg-red-600"
+                                          : "bg-orange-600"
+                                    }
+                                 >
+                                    {report.summary.averageSentiment
+                                       .charAt(0)
+                                       .toUpperCase() +
+                                       report.summary.averageSentiment.slice(1)}
+                                 </Badge>
+                                 <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                       handleDownloadReport(report.id)
+                                    }
+                                 >
+                                    <Download className="h-4 w-4" />
+                                 </Button>
+                                 <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() =>
+                                       handleDeleteReport(report.id)
+                                    }
+                                 >
+                                    <Trash2 className="h-4 w-4" />
+                                 </Button>
+                              </div>
+                           </div>
+                        ))}
 
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <FileText className="h-4 w-4 text-primary" />
-                     <div>
-                        <p className="font-medium">
-                           Meta Brand Analysis Report
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           Generated 2 days ago
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-blue-600">
-                        Neutral
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4" />
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Trash2 className="h-4 w-4" />
-                     </Button>
-                  </div>
-               </div>
+                        {/* Pagination for reports */}
+                        {totalPages > 1 && (
+                           <div className="mt-6">
+                              <Pagination>
+                                 <PaginationContent>
+                                    <PaginationItem>
+                                       <PaginationPrevious
+                                          onClick={() =>
+                                             setReportsPage(
+                                                Math.max(1, reportsPage - 1)
+                                             )
+                                          }
+                                          className={
+                                             reportsPage === 1
+                                                ? "pointer-events-none opacity-50"
+                                                : "cursor-pointer"
+                                          }
+                                       />
+                                    </PaginationItem>
 
-               <Separator />
+                                    {Array.from(
+                                       { length: totalPages },
+                                       (_, i) => i + 1
+                                    ).map((page) => (
+                                       <PaginationItem key={page}>
+                                          <PaginationLink
+                                             onClick={() =>
+                                                setReportsPage(page)
+                                             }
+                                             isActive={page === reportsPage}
+                                             className="cursor-pointer"
+                                          >
+                                             {page}
+                                          </PaginationLink>
+                                       </PaginationItem>
+                                    ))}
 
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <FileText className="h-4 w-4 text-primary" />
-                     <div>
-                        <p className="font-medium">
-                           Twitter Brand Analysis Report
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                           Generated 3 days ago
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-orange-600">
-                        Mixed
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4" />
-                     </Button>
-                     <Button size="sm" variant="outline">
-                        <Trash2 className="h-4 w-4" />
-                     </Button>
-                  </div>
-               </div>
+                                    <PaginationItem>
+                                       <PaginationNext
+                                          onClick={() =>
+                                             setReportsPage(
+                                                Math.min(
+                                                   totalPages,
+                                                   reportsPage + 1
+                                                )
+                                             )
+                                          }
+                                          className={
+                                             reportsPage === totalPages
+                                                ? "pointer-events-none opacity-50"
+                                                : "cursor-pointer"
+                                          }
+                                       />
+                                    </PaginationItem>
+                                 </PaginationContent>
+                              </Pagination>
+                           </div>
+                        )}
+                     </>
+                  );
+               })()}
+
+               {filteredReports.length === 0 && (
+                  <p className="text-muted-foreground text-center py-4">
+                     No reports found.
+                  </p>
+               )}
             </CardContent>
          </Card>
+
+         {/* Modal */}
+         <GenerateReportModal
+            isOpen={isGenerateReportModalOpen}
+            onClose={() => setIsGenerateReportModalOpen(false)}
+            onSubmit={handleGenerateReport}
+            analyses={analyses}
+         />
       </div>
    );
 }

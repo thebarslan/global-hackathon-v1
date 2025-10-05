@@ -2,9 +2,9 @@ const axios = require("axios");
 
 class GeminiService {
    constructor() {
-      this.baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+      this.baseUrl = "https://generativelanguage.googleapis.com/v1";
       this.apiKey = process.env.GEMINI_API_KEY;
-      this.model = "gemini-pro";
+      this.model = "gemini-2.5-flash";
    }
 
    // Analyze sentiment of Reddit posts
@@ -13,6 +13,12 @@ class GeminiService {
          if (!this.apiKey) {
             throw new Error("Gemini API key is not configured");
          }
+
+         console.log(`Gemini API Key exists: ${!!this.apiKey}`);
+         console.log(`Using model: ${this.model}`);
+         console.log(
+            `API URL: ${this.baseUrl}/models/${this.model}:generateContent`
+         );
 
          const startTime = Date.now();
 
@@ -36,7 +42,7 @@ class GeminiService {
                   temperature: 0.1,
                   topK: 1,
                   topP: 0.8,
-                  maxOutputTokens: 2048,
+                  maxOutputTokens: 8192, // Increased from 4096 to 8192
                },
                safetySettings: [
                   {
@@ -47,42 +53,39 @@ class GeminiService {
                      category: "HARM_CATEGORY_HATE_SPEECH",
                      threshold: "BLOCK_MEDIUM_AND_ABOVE",
                   },
+                  {
+                     category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                     threshold: "BLOCK_MEDIUM_AND_ABOVE",
+                  },
+                  {
+                     category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                     threshold: "BLOCK_MEDIUM_AND_ABOVE",
+                  },
                ],
             },
             {
                headers: {
                   "Content-Type": "application/json",
                },
-               timeout: 30000, // 30 seconds timeout
             }
          );
 
-         const processingTime = Date.now() - startTime;
+         const endTime = Date.now();
+         const processingTime = endTime - startTime;
 
-         if (
-            response.data &&
-            response.data.candidates &&
-            response.data.candidates[0]
-         ) {
-            const candidate = response.data.candidates[0];
-            const content = candidate.content.parts[0].text;
+         // Parse the response
+         const analysis = this.parseSentimentResponse(response.data, posts);
 
-            // Parse the JSON response
-            const analysisResult = this.parseGeminiResponse(content);
-
-            return {
-               success: true,
-               analysis: analysisResult,
-               metadata: {
-                  processingTime,
-                  model: this.model,
-                  tokensUsed: this.estimateTokens(prompt + content),
-                  rawResponse: content,
-               },
-            };
-         }
-
-         throw new Error("Invalid response from Gemini API");
+         return {
+            success: true,
+            analysis: analysis,
+            metadata: {
+               model: this.model,
+               processingTime: processingTime,
+               tokensUsed: response.data.usage?.total_tokens || 0,
+               rawResponse: response.data,
+            },
+         };
       } catch (error) {
          console.error("Gemini API Error:", error.message);
          throw new Error(`Failed to analyze sentiment: ${error.message}`);
@@ -92,147 +95,118 @@ class GeminiService {
    // Create prompt for sentiment analysis
    createSentimentPrompt(posts, keyword) {
       const postsText = posts
-         .map(
-            (post, index) =>
-               `Post ${index + 1}:
-Title: ${post.title}
-Content: ${post.content}
-Subreddit: r/${post.subreddit}
-Score: ${post.score}
-Comments: ${post.numComments}
-`
-         )
+         .map((post, index) => {
+            return `${index + 1}. ${post.title} - ${post.content}`;
+         })
          .join("\n");
 
-      return `You are a brand sentiment analysis expert. Analyze the following Reddit posts about "${keyword}" and provide a comprehensive sentiment analysis.
+      return `Analyze sentiment of Reddit posts about "${keyword}".
 
-Posts to analyze:
+Posts:
 ${postsText}
 
-Please analyze each post individually and then provide an overall sentiment analysis. Return your response in the following JSON format:
-
-{
-  "overall": {
-    "sentiment": "positive|negative|neutral|mixed",
-    "confidence": 0.0-1.0,
-    "score": -1.0 to 1.0,
-    "summary": "Brief explanation of overall sentiment"
-  },
-  "breakdown": [
-    {
-      "postId": "post_id",
-      "sentiment": "positive|negative|neutral",
-      "confidence": 0.0-1.0,
-      "score": -1.0 to 1.0,
-      "reasoning": "Why this sentiment was assigned"
-    }
-  ],
-  "insights": {
-    "keyThemes": ["theme1", "theme2"],
-    "commonComplaints": ["complaint1", "complaint2"],
-    "positiveAspects": ["aspect1", "aspect2"],
-    "recommendations": ["recommendation1", "recommendation2"]
-  }
-}
-
-Guidelines:
-- Sentiment score: -1.0 (very negative) to 1.0 (very positive)
-- Confidence: 0.0 (no confidence) to 1.0 (complete confidence)
-- Consider context, sarcasm, and nuanced language
-- Focus on brand-related mentions and opinions
-- Provide actionable insights for brand improvement
-
-Respond only with valid JSON, no additional text.`;
+JSON:
+{"overall_sentiment":"positive|negative|neutral|mixed","confidence":85,"summary":"Brief summary","breakdown":[{"post_id":"1","sentiment":"positive|negative|neutral|mixed","confidence":90,"key_phrases":["phrase1"],"summary":"Brief"}]}`;
    }
 
-   // Parse Gemini response and validate JSON
-   parseGeminiResponse(responseText) {
-      try {
-         // Extract JSON from response (in case there's extra text)
-         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-         if (!jsonMatch) {
-            throw new Error("No JSON found in response");
-         }
+   // Clean JSON response from Gemini
+   cleanJsonResponse(content) {
+      // Remove markdown code blocks
+      content = content.replace(/```json\s*/g, "").replace(/```\s*/g, "");
 
-         const parsed = JSON.parse(jsonMatch[0]);
+      // Remove any leading/trailing whitespace
+      content = content.trim();
 
-         // Validate required fields
-         if (!parsed.overall || !parsed.breakdown) {
-            throw new Error("Invalid response structure");
-         }
+      // Find the first { and last } to extract JSON
+      const firstBrace = content.indexOf("{");
+      const lastBrace = content.lastIndexOf("}");
 
-         // Calculate summary statistics
-         const breakdown = parsed.breakdown || [];
-         const summary = {
-            positiveCount: breakdown.filter((b) => b.sentiment === "positive")
-               .length,
-            negativeCount: breakdown.filter((b) => b.sentiment === "negative")
-               .length,
-            neutralCount: breakdown.filter((b) => b.sentiment === "neutral")
-               .length,
-            totalPosts: breakdown.length,
-         };
-
-         return {
-            ...parsed,
-            summary,
-         };
-      } catch (error) {
-         console.error("Failed to parse Gemini response:", error.message);
-         throw new Error(`Failed to parse analysis result: ${error.message}`);
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+         content = content.substring(firstBrace, lastBrace + 1);
       }
+
+      return content;
    }
 
-   // Estimate token count (rough approximation)
-   estimateTokens(text) {
-      // Rough estimation: 1 token ≈ 4 characters for English text
-      return Math.ceil(text.length / 4);
-   }
-
-   // Test Gemini API connectivity
-   async testConnection() {
+   // Parse Gemini response
+   parseSentimentResponse(responseData, posts) {
       try {
-         if (!this.apiKey) {
-            return {
-               success: false,
-               message: "Gemini API key is not configured",
-            };
-         }
-
-         const response = await axios.post(
-            `${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`,
-            {
-               contents: [
-                  {
-                     parts: [
-                        {
-                           text: "Hello, please respond with 'API connection successful'",
-                        },
-                     ],
-                  },
-               ],
-               generationConfig: {
-                  maxOutputTokens: 50,
-               },
-            },
-            {
-               headers: {
-                  "Content-Type": "application/json",
-               },
-               timeout: 10000,
-            }
+         console.log(
+            "Gemini response data:",
+            JSON.stringify(responseData, null, 2)
          );
 
+         if (!responseData.candidates || !responseData.candidates[0]) {
+            throw new Error("No candidates in response");
+         }
+
+         const candidate = responseData.candidates[0];
+
+         // Check if response was cut off due to token limit
+         if (candidate.finishReason === "MAX_TOKENS") {
+            console.log(
+               "⚠️ Response was cut off due to MAX_TOKENS limit, but attempting to parse partial response"
+            );
+            // Don't throw error immediately, try to parse what we have
+         }
+
+         if (
+            !candidate.content ||
+            !candidate.content.parts ||
+            !candidate.content.parts[0]
+         ) {
+            throw new Error("Invalid response structure - no content parts");
+         }
+
+         let content = candidate.content.parts[0].text;
+
+         if (!content) {
+            throw new Error("Empty content in response");
+         }
+
+         // Clean up the response content
+         content = this.cleanJsonResponse(content);
+
+         console.log("Cleaned Gemini response content:", content);
+         const parsed = JSON.parse(content);
+
+         // Calculate average sentiment score
+         const sentimentScores = {
+            positive: 100,
+            neutral: 50,
+            negative: 0,
+            mixed: 25,
+         };
+
+         const averageScore = parsed.breakdown
+            ? parsed.breakdown.reduce((sum, item) => {
+                 const baseScore = sentimentScores[item.sentiment] || 50;
+                 return sum + baseScore * (item.confidence / 100);
+              }, 0) / parsed.breakdown.length
+            : sentimentScores[parsed.overall_sentiment] || 50;
+
          return {
-            success: true,
-            message: "Gemini API is accessible",
-            response: response.data,
+            overallSentiment: parsed.overall_sentiment || "neutral",
+            confidence: parsed.confidence || 50,
+            summary: parsed.summary || "No summary available",
+            averageScore: Math.round(averageScore),
+            breakdown: parsed.breakdown || [],
          };
       } catch (error) {
+         console.error("Error parsing Gemini response:", error);
+         // Fallback response
          return {
-            success: false,
-            message: error.message,
-            status: error.response?.status,
+            overallSentiment: "neutral",
+            confidence: 50,
+            summary: "Unable to parse sentiment analysis",
+            averageScore: 50,
+            breakdown: posts.map((post, index) => ({
+               post_id: (index + 1).toString(),
+               sentiment: "neutral",
+               confidence: 50,
+               key_phrases: [],
+               summary: "Unable to analyze this post",
+            })),
          };
       }
    }

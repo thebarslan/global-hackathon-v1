@@ -117,6 +117,9 @@
 }
 
 @layer base {
+   html {
+      scroll-behavior: smooth;
+   }
    * {
       @apply border-border outline-ring/50;
    }
@@ -127,6 +130,10 @@
 
 /* Sidebar icon centering fix */
 @layer components {
+   /* Prevent sticky navbar overlap when jumping to anchors */
+   section[id] {
+      scroll-margin-top: 80px;
+   }
    /* Force center icons in collapsed sidebar - highest specificity */
    .group\/sidebar-wrapper.group-data-\[collapsible\=icon\]
       [data-sidebar="menu-button"] {

@@ -18,7 +18,8 @@ class AnalysisService {
 
          // Create analysis record
          const analysis = await Analysis.create({
-            brand: brandId,
+            brandId: brandId,
+            brandName: brand.name,
             keyword,
             createdBy: userId,
             status: "pending",
@@ -33,7 +34,8 @@ class AnalysisService {
             success: true,
             analysis: {
                id: analysis._id,
-               brand: brand.name,
+               brandId: analysis.brandId,
+               brandName: brand.name,
                keyword,
                status: "pending",
                createdAt: analysis.createdAt,
@@ -52,16 +54,16 @@ class AnalysisService {
             throw new Error("Analysis not found");
          }
 
-         // Update status to processing
-         analysis.status = "processing";
+         // Update status to in_progress
+         analysis.status = "in_progress";
          await analysis.save();
 
          const startTime = Date.now();
 
-         // Step 1: Fetch Reddit posts
+         // Step 1: Fetch Reddit posts (100 posts for batch processing)
          console.log(`Fetching Reddit posts for keyword: ${analysis.keyword}`);
          const redditPosts = await redditService.searchPosts(analysis.keyword, {
-            limit: 20,
+            limit: 100, // Increased to 100 for batch processing
             sort: "new",
          });
 
@@ -82,37 +84,157 @@ class AnalysisService {
             postId: post.postId,
          }));
 
-         // Step 2: Analyze sentiment with Gemini
-         console.log(`Analyzing sentiment for ${redditPosts.length} posts`);
-         const sentimentResult = await geminiService.analyzeSentiment(
-            redditPosts,
-            analysis.keyword
+         // Step 2: Batch analyze sentiment with Gemini (10 posts per batch)
+         console.log(
+            `Batch analyzing sentiment for ${redditPosts.length} posts`
+         );
+         const batchSize = 10;
+         const batches = [];
+
+         // Split posts into batches of 10
+         for (let i = 0; i < redditPosts.length; i += batchSize) {
+            batches.push(redditPosts.slice(i, i + batchSize));
+         }
+
+         console.log(
+            `Processing ${batches.length} batches of ${batchSize} posts each`
          );
 
-         // Update analysis with sentiment results
-         analysis.sentimentAnalysis = {
-            overall: sentimentResult.analysis.overall,
-            breakdown: sentimentResult.analysis.breakdown,
-            summary: sentimentResult.analysis.summary,
-         };
+         const allBatchResults = [];
+         let totalRelevantPosts = 0;
+         let totalIrrelevantPosts = 0;
+         let totalGeminiApiCalls = 0;
 
-         analysis.geminiResponse = {
-            rawResponse: sentimentResult.metadata.rawResponse,
-            processingTime: sentimentResult.metadata.processingTime,
-            model: sentimentResult.metadata.model,
-            tokensUsed: sentimentResult.metadata.tokensUsed,
-         };
+         // Process each batch
+         for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            console.log(
+               `Processing batch ${batchIndex + 1}/${batches.length} (${
+                  batch.length
+               } posts)`
+            );
+
+            try {
+               const batchResult = await geminiService.analyzeSentiment(
+                  batch,
+                  analysis.keyword
+               );
+
+               totalGeminiApiCalls++;
+
+               // Process batch results and filter relevant posts
+               if (batchResult.analysis && batchResult.analysis.breakdown) {
+                  batchResult.analysis.breakdown.forEach((item, itemIndex) => {
+                     const post = batch[itemIndex];
+
+                     // Check if post is relevant (confidence > 60% and not explicitly irrelevant)
+                     const isRelevant =
+                        item.confidence > 60 &&
+                        item.sentiment !== "neutral" &&
+                        !item.summary.toLowerCase().includes("not relevant") &&
+                        !item.summary
+                           .toLowerCase()
+                           .includes("does not mention");
+
+                     if (isRelevant) {
+                        totalRelevantPosts++;
+                        allBatchResults.push({
+                           postId: post?.id || `${batchIndex}-${itemIndex}`,
+                           sentiment: item.sentiment,
+                           confidence: item.confidence,
+                           keywords: item.key_phrases || [],
+                           summary: item.summary,
+                           postTitle: post?.title || "",
+                           postContent: post?.content || "",
+                           subreddit: post?.subreddit || "",
+                           score: post?.score || 0,
+                        });
+                     } else {
+                        totalIrrelevantPosts++;
+                     }
+                  });
+               }
+
+               // Update progress after each batch
+               const currentProgress = Math.round(
+                  ((batchIndex + 1) / batches.length) * 100
+               );
+               analysis.progress = currentProgress;
+               await analysis.save();
+               console.log(
+                  `Progress updated for analysis ${analysisId}: ${currentProgress}% (batch ${
+                     batchIndex + 1
+                  }/${batches.length})`
+               );
+
+               // Small delay between batches to avoid rate limiting
+               if (batchIndex < batches.length - 1) {
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
+               }
+            } catch (batchError) {
+               console.error(
+                  `Error processing batch ${batchIndex + 1}:`,
+                  batchError
+               );
+               // Continue with next batch even if one fails
+            }
+         }
+
+         console.log(
+            `Batch processing complete: ${totalRelevantPosts} relevant, ${totalIrrelevantPosts} irrelevant posts`
+         );
+
+         // Update analysis with filtered sentiment results
+         analysis.sentimentResults = allBatchResults;
+         analysis.totalPosts = redditPosts.length;
+         analysis.analyzedPosts = totalRelevantPosts;
+         analysis.irrelevantPosts = totalIrrelevantPosts;
+
+         // Calculate overall sentiment from relevant posts only
+         if (allBatchResults.length > 0) {
+            const sentimentCounts = {
+               positive: 0,
+               negative: 0,
+               neutral: 0,
+               mixed: 0,
+            };
+
+            let totalConfidence = 0;
+
+            allBatchResults.forEach((result) => {
+               sentimentCounts[result.sentiment]++;
+               totalConfidence += result.confidence;
+            });
+
+            // Determine overall sentiment
+            const maxSentiment = Object.keys(sentimentCounts).reduce((a, b) =>
+               sentimentCounts[a] > sentimentCounts[b] ? a : b
+            );
+
+            analysis.averageSentiment = maxSentiment;
+            analysis.sentimentScore = Math.round(
+               totalConfidence / allBatchResults.length
+            );
+         } else {
+            analysis.averageSentiment = "neutral";
+            analysis.sentimentScore = 50;
+         }
 
          // Update metadata
          analysis.metadata = {
             redditApiCalls: 1,
-            geminiApiCalls: 1,
+            geminiApiCalls: totalGeminiApiCalls,
             totalProcessingTime: Date.now() - startTime,
-            postsAnalyzed: redditPosts.length,
+            postsAnalyzed: totalRelevantPosts,
+            totalPostsFound: redditPosts.length,
+            irrelevantPosts: totalIrrelevantPosts,
+            batchSize: batchSize,
+            batchesProcessed: batches.length,
          };
 
          // Mark as completed
          analysis.status = "completed";
+         analysis.progress = 100;
          await analysis.save();
 
          // Update brand's last analyzed timestamp
@@ -348,6 +470,70 @@ class AnalysisService {
          return {
             success: true,
             message: "Analysis deleted successfully",
+         };
+      } catch (error) {
+         throw error;
+      }
+   }
+
+   // Get all analyses for user (across all brands)
+   async getUserAnalyses(userId, options = {}) {
+      try {
+         const { page = 1, limit = 10, status, sentiment } = options;
+
+         // Build query
+         const query = { createdBy: userId };
+
+         if (status) {
+            query.status = status;
+         }
+
+         if (sentiment) {
+            query.averageSentiment = sentiment;
+         }
+
+         // Calculate pagination
+         const skip = (page - 1) * limit;
+
+         // Get analyses with pagination
+         const analyses = await Analysis.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate("brandId", "name keywords");
+
+         // Get total count for pagination
+         const total = await Analysis.countDocuments(query);
+
+         // Format the response
+         const formattedAnalyses = analyses.map((analysis) => ({
+            _id: analysis._id,
+            brandId: analysis.brandId,
+            brandName: analysis.brandName,
+            keyword: analysis.keyword,
+            status: analysis.status,
+            progress: analysis.progress,
+            redditPosts: analysis.redditPosts,
+            sentimentResults: analysis.sentimentResults,
+            createdAt: analysis.createdAt,
+            startedAt: analysis.startedAt,
+            completedAt: analysis.completedAt,
+            totalPosts: analysis.totalPosts,
+            analyzedPosts: analysis.analyzedPosts,
+            averageSentiment: analysis.averageSentiment,
+            sentimentScore: analysis.sentimentScore,
+            metadata: analysis.metadata,
+         }));
+
+         return {
+            success: true,
+            analyses: formattedAnalyses,
+            pagination: {
+               page: parseInt(page),
+               limit: parseInt(limit),
+               total,
+               pages: Math.ceil(total / limit),
+            },
          };
       } catch (error) {
          throw error;

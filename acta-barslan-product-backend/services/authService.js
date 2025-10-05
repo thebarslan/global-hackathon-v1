@@ -14,12 +14,27 @@ class AuthService {
             throw new Error("User already exists with this email");
          }
 
-         // Create user
+         // Create user with subscription
          const user = await User.create({
             firstName,
             lastName,
             email,
             password,
+            subscription: {
+               isSubscribed: true,
+               plan: "premium",
+               startDate: new Date(),
+               endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
+               autoRenew: true,
+               status: "active",
+               features: {
+                  maxBrands: 50,
+                  maxAnalyses: 200,
+                  maxReports: 100,
+                  redditApiCalls: 10000,
+                  geminiApiCalls: 5000,
+               },
+            },
          });
 
          // Generate JWT token
@@ -34,6 +49,7 @@ class AuthService {
                email: user.email,
                role: user.role,
                isEmailVerified: user.isEmailVerified,
+               subscription: user.subscription,
             },
             token,
          };
@@ -79,6 +95,7 @@ class AuthService {
                role: user.role,
                isEmailVerified: user.isEmailVerified,
                lastLogin: user.lastLogin,
+               subscription: user.subscription,
             },
             token,
          };

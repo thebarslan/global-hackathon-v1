@@ -1,3 +1,5 @@
+"use client";
+import { useRouter } from "next/navigation";
 import {
    Card,
    CardContent,
@@ -7,7 +9,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
    BarChart3,
@@ -21,8 +22,87 @@ import {
    TrendingUp,
    Calendar,
 } from "lucide-react";
+import { useState } from "react";
+import { Analysis, CreateAnalysisRequest } from "@/types/analysis";
+import { StartAnalysisModal } from "@/components/modals/StartAnalysisModal";
+import { useAnalysis } from "@/contexts/AnalysisContext";
+import { useBrands } from "@/contexts/BrandsContext";
+import { useToast } from "@/components/ui/toast";
+import { LoadingSpinner } from "@/components/ui/loading";
+import {
+   Pagination,
+   PaginationContent,
+   PaginationItem,
+   PaginationLink,
+   PaginationNext,
+   PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export function AnalysisPage() {
+   const router = useRouter();
+   const [isStartAnalysisModalOpen, setIsStartAnalysisModalOpen] =
+      useState(false);
+   const [analysisHistoryPage, setAnalysisHistoryPage] = useState(1);
+
+   const {
+      analyses,
+      createAnalysis,
+      pauseAnalysis,
+      cancelAnalysis,
+      isLoading: analysesLoading,
+   } = useAnalysis();
+   const { brands, isLoading: brandsLoading } = useBrands();
+   const { success, error } = useToast();
+
+   const isLoading = analysesLoading || brandsLoading;
+
+   const handleStartAnalysis = async (data: CreateAnalysisRequest) => {
+      try {
+         await createAnalysis(data);
+         setIsStartAnalysisModalOpen(false);
+      } catch (err) {
+         console.error("Failed to start analysis:", err);
+      }
+   };
+
+   const handlePauseAnalysis = async (analysisId: string) => {
+      try {
+         await pauseAnalysis(analysisId);
+      } catch (err) {
+         console.error("Failed to pause analysis:", err);
+      }
+   };
+
+   const handleCancelAnalysis = async (analysisId: string) => {
+      try {
+         await cancelAnalysis(analysisId);
+      } catch (err) {
+         console.error("Failed to cancel analysis:", err);
+      }
+   };
+
+   const handleViewResults = (analysisId: string) => {
+      router.push(`/dashboard/analysis/${analysisId}`);
+   };
+
+   // Calculate stats from real data
+   const totalAnalyses = analyses.length;
+   const inProgressAnalyses = analyses.filter(
+      (a) => a.status === "in_progress"
+   ).length;
+   const completedAnalyses = analyses.filter(
+      (a) => a.status === "completed"
+   ).length;
+   const failedAnalyses = analyses.filter((a) => a.status === "failed").length;
+
+   if (isLoading) {
+      return (
+         <div className="flex items-center justify-center min-h-[400px]">
+            <LoadingSpinner text="Loading analyses..." size="lg" />
+         </div>
+      );
+   }
+
    return (
       <div className="space-y-6">
          {/* Header */}
@@ -33,7 +113,10 @@ export function AnalysisPage() {
                   Start new analyses and monitor ongoing processes
                </p>
             </div>
-            <Button className="flex items-center gap-2">
+            <Button
+               className="flex items-center gap-2"
+               onClick={() => setIsStartAnalysisModalOpen(true)}
+            >
                <Zap className="h-4 w-4" />
                Start New Analysis
             </Button>
@@ -46,7 +129,7 @@ export function AnalysisPage() {
                   <div className="flex items-center gap-2">
                      <BarChart3 className="h-5 w-5 text-primary" />
                      <div>
-                        <p className="text-2xl font-bold">48</p>
+                        <p className="text-2xl font-bold">{totalAnalyses}</p>
                         <p className="text-sm text-muted-foreground">
                            Total Analyses
                         </p>
@@ -60,7 +143,9 @@ export function AnalysisPage() {
                   <div className="flex items-center gap-2">
                      <Clock className="h-5 w-5 text-orange-600" />
                      <div>
-                        <p className="text-2xl font-bold">3</p>
+                        <p className="text-2xl font-bold">
+                           {inProgressAnalyses}
+                        </p>
                         <p className="text-sm text-muted-foreground">
                            In Progress
                         </p>
@@ -74,7 +159,9 @@ export function AnalysisPage() {
                   <div className="flex items-center gap-2">
                      <CheckCircle className="h-5 w-5 text-green-600" />
                      <div>
-                        <p className="text-2xl font-bold">42</p>
+                        <p className="text-2xl font-bold">
+                           {completedAnalyses}
+                        </p>
                         <p className="text-sm text-muted-foreground">
                            Completed
                         </p>
@@ -88,167 +175,13 @@ export function AnalysisPage() {
                   <div className="flex items-center gap-2">
                      <AlertCircle className="h-5 w-5 text-red-600" />
                      <div>
-                        <p className="text-2xl font-bold">3</p>
+                        <p className="text-2xl font-bold">{failedAnalyses}</p>
                         <p className="text-sm text-muted-foreground">Failed</p>
                      </div>
                   </div>
                </CardContent>
             </Card>
          </div>
-
-         {/* Active Analyses */}
-         <Card>
-            <CardHeader>
-               <CardTitle className="flex items-center gap-2">
-                  <Play className="h-5 w-5" />
-                  Active Analyses
-               </CardTitle>
-               <CardDescription>
-                  Currently running sentiment analyses
-               </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">Yahoo Brand Analysis</p>
-                           <p className="text-sm text-muted-foreground">
-                              Started 2 minutes ago
-                           </p>
-                        </div>
-                     </div>
-                     <Badge variant="secondary">In Progress</Badge>
-                  </div>
-                  <Progress value={65} className="mb-2" />
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                     <span>Processing Reddit posts...</span>
-                     <span>65% complete</span>
-                  </div>
-               </div>
-
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">
-                              Microsoft Brand Analysis
-                           </p>
-                           <p className="text-sm text-muted-foreground">
-                              Started 5 minutes ago
-                           </p>
-                        </div>
-                     </div>
-                     <Badge variant="secondary">In Progress</Badge>
-                  </div>
-                  <Progress value={30} className="mb-2" />
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                     <span>Fetching Reddit data...</span>
-                     <span>30% complete</span>
-                  </div>
-               </div>
-
-               <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-3">
-                     <div className="flex items-center gap-3">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <div>
-                           <p className="font-medium">Apple Brand Analysis</p>
-                           <p className="text-sm text-muted-foreground">
-                              Started 8 minutes ago
-                           </p>
-                        </div>
-                     </div>
-                     <Badge variant="secondary">In Progress</Badge>
-                  </div>
-                  <Progress value={85} className="mb-2" />
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                     <span>Generating sentiment report...</span>
-                     <span>85% complete</span>
-                  </div>
-               </div>
-            </CardContent>
-         </Card>
-
-         {/* Recent Completed Analyses */}
-         <Card>
-            <CardHeader>
-               <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5" />
-                  Recent Completed Analyses
-               </CardTitle>
-               <CardDescription>
-                  Latest analysis results and insights
-               </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                     <div>
-                        <p className="font-medium">Google Brand Analysis</p>
-                        <p className="text-sm text-muted-foreground">
-                           Sentiment: Positive (78%) - 1,234 posts analyzed
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-green-600">
-                        Positive
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        View Results
-                     </Button>
-                  </div>
-               </div>
-
-               <Separator />
-
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                     <div>
-                        <p className="font-medium">Meta Brand Analysis</p>
-                        <p className="text-sm text-muted-foreground">
-                           Sentiment: Neutral (52%) - 856 posts analyzed
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-blue-600">
-                        Neutral
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        View Results
-                     </Button>
-                  </div>
-               </div>
-
-               <Separator />
-
-               <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                     <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                     <div>
-                        <p className="font-medium">Twitter Brand Analysis</p>
-                        <p className="text-sm text-muted-foreground">
-                           Sentiment: Mixed (45%) - 2,156 posts analyzed
-                        </p>
-                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                     <Badge variant="default" className="bg-orange-600">
-                        Mixed
-                     </Badge>
-                     <Button size="sm" variant="outline">
-                        View Results
-                     </Button>
-                  </div>
-               </div>
-            </CardContent>
-         </Card>
 
          {/* Analysis History */}
          <Card>
@@ -263,68 +196,208 @@ export function AnalysisPage() {
             </CardHeader>
             <CardContent>
                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
-                     <div className="flex items-center gap-3">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        <div>
-                           <p className="font-medium">Netflix Brand Analysis</p>
-                           <p className="text-sm text-muted-foreground">
-                              Completed 1 hour ago
-                           </p>
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-2">
-                        <Badge variant="default" className="bg-green-600">
-                           Positive
-                        </Badge>
-                        <Button size="sm" variant="outline">
-                           Generate Report
-                        </Button>
-                     </div>
-                  </div>
+                  {analyses.length > 0 ? (
+                     (() => {
+                        const sortedAnalyses = analyses.sort(
+                           (a, b) =>
+                              new Date(b.createdAt).getTime() -
+                              new Date(a.createdAt).getTime()
+                        );
 
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
-                     <div className="flex items-center gap-3">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        <div>
-                           <p className="font-medium">Spotify Brand Analysis</p>
-                           <p className="text-sm text-muted-foreground">
-                              Completed 3 hours ago
-                           </p>
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-2">
-                        <Badge variant="default" className="bg-blue-600">
-                           Neutral
-                        </Badge>
-                        <Button size="sm" variant="outline">
-                           Generate Report
-                        </Button>
-                     </div>
-                  </div>
+                        const itemsPerPage = 10;
+                        const totalPages = Math.ceil(
+                           sortedAnalyses.length / itemsPerPage
+                        );
+                        const startIndex =
+                           (analysisHistoryPage - 1) * itemsPerPage;
+                        const endIndex = startIndex + itemsPerPage;
+                        const paginatedAnalyses = sortedAnalyses.slice(
+                           startIndex,
+                           endIndex
+                        );
 
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
-                     <div className="flex items-center gap-3">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        <div>
-                           <p className="font-medium">Uber Brand Analysis</p>
-                           <p className="text-sm text-muted-foreground">
-                              Completed 6 hours ago
-                           </p>
-                        </div>
+                        const renderAnalysisItem = (analysis: Analysis) => (
+                           <div
+                              key={analysis.id}
+                              className="flex flex-col gap-3 p-4 rounded-lg border"
+                           >
+                              <div className="flex items-center justify-between">
+                                 <div className="flex items-center gap-3">
+                                    <TrendingUp className="h-4 w-4 text-primary" />
+                                    <div>
+                                       <p className="font-medium">
+                                          {analysis.brandName} Analysis
+                                       </p>
+                                       <p className="text-sm text-muted-foreground">
+                                          {analysis.status === "completed"
+                                             ? `Completed ${
+                                                  analysis.completedAt
+                                                     ? new Date(
+                                                          analysis.completedAt
+                                                       ).toLocaleString()
+                                                     : "recently"
+                                               }`
+                                             : analysis.status === "in_progress"
+                                             ? `In progress`
+                                             : analysis.status === "failed"
+                                             ? "Failed"
+                                             : "Pending"}
+                                       </p>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                    {analysis.status === "completed" ? (
+                                       <>
+                                          <Badge
+                                             variant="default"
+                                             className={
+                                                analysis.averageSentiment ===
+                                                "positive"
+                                                   ? "bg-green-600"
+                                                   : analysis.averageSentiment ===
+                                                     "neutral"
+                                                   ? "bg-blue-600"
+                                                   : analysis.averageSentiment ===
+                                                     "negative"
+                                                   ? "bg-red-600"
+                                                   : analysis.averageSentiment ===
+                                                     "not applicable"
+                                                   ? "bg-gray-600"
+                                                   : "bg-orange-600"
+                                             }
+                                          >
+                                             {analysis.averageSentiment
+                                                ? analysis.averageSentiment
+                                                     .charAt(0)
+                                                     .toUpperCase() +
+                                                  analysis.averageSentiment.slice(
+                                                     1
+                                                  )
+                                                : "Unknown"}
+                                          </Badge>
+                                          <Button
+                                             size="sm"
+                                             variant="outline"
+                                             onClick={() =>
+                                                handleViewResults(analysis.id)
+                                             }
+                                          >
+                                             View Results
+                                          </Button>
+                                       </>
+                                    ) : analysis.status === "in_progress" ? (
+                                       <Badge
+                                          variant="default"
+                                          className="bg-yellow-600"
+                                       >
+                                          In Progress
+                                       </Badge>
+                                    ) : analysis.status === "failed" ? (
+                                       <Badge variant="destructive">
+                                          Failed
+                                       </Badge>
+                                    ) : (
+                                       <Badge variant="outline">Pending</Badge>
+                                    )}
+                                 </div>
+                              </div>
+                           </div>
+                        );
+
+                        return (
+                           <>
+                              {paginatedAnalyses.map(renderAnalysisItem)}
+
+                              {/* Pagination if more than 10 items */}
+                              {totalPages > 1 && (
+                                 <div className="mt-6">
+                                    <Pagination>
+                                       <PaginationContent>
+                                          <PaginationItem>
+                                             <PaginationPrevious
+                                                onClick={() =>
+                                                   setAnalysisHistoryPage(
+                                                      Math.max(
+                                                         1,
+                                                         analysisHistoryPage - 1
+                                                      )
+                                                   )
+                                                }
+                                                className={
+                                                   analysisHistoryPage === 1
+                                                      ? "pointer-events-none opacity-50"
+                                                      : "cursor-pointer"
+                                                }
+                                             />
+                                          </PaginationItem>
+
+                                          {Array.from(
+                                             { length: totalPages },
+                                             (_, i) => i + 1
+                                          ).map((page) => (
+                                             <PaginationItem key={page}>
+                                                <PaginationLink
+                                                   onClick={() =>
+                                                      setAnalysisHistoryPage(
+                                                         page
+                                                      )
+                                                   }
+                                                   isActive={
+                                                      page ===
+                                                      analysisHistoryPage
+                                                   }
+                                                   className="cursor-pointer"
+                                                >
+                                                   {page}
+                                                </PaginationLink>
+                                             </PaginationItem>
+                                          ))}
+
+                                          <PaginationItem>
+                                             <PaginationNext
+                                                onClick={() =>
+                                                   setAnalysisHistoryPage(
+                                                      Math.min(
+                                                         totalPages,
+                                                         analysisHistoryPage + 1
+                                                      )
+                                                   )
+                                                }
+                                                className={
+                                                   analysisHistoryPage ===
+                                                   totalPages
+                                                      ? "pointer-events-none opacity-50"
+                                                      : "cursor-pointer"
+                                                }
+                                             />
+                                          </PaginationItem>
+                                       </PaginationContent>
+                                    </Pagination>
+                                 </div>
+                              )}
+                           </>
+                        );
+                     })()
+                  ) : (
+                     <div className="text-center py-8 text-muted-foreground">
+                        <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No analysis history</p>
+                        <p className="text-sm">
+                           Start your first analysis to see history here
+                        </p>
                      </div>
-                     <div className="flex items-center gap-2">
-                        <Badge variant="default" className="bg-orange-600">
-                           Mixed
-                        </Badge>
-                        <Button size="sm" variant="outline">
-                           Generate Report
-                        </Button>
-                     </div>
-                  </div>
+                  )}
                </div>
             </CardContent>
          </Card>
+
+         {/* Modal */}
+         <StartAnalysisModal
+            isOpen={isStartAnalysisModalOpen}
+            onClose={() => setIsStartAnalysisModalOpen(false)}
+            onSubmit={handleStartAnalysis}
+            brands={brands}
+         />
       </div>
    );
 }

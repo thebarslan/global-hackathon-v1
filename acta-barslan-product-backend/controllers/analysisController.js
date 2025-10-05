@@ -22,7 +22,7 @@ class AnalysisController {
          res.status(201).json({
             success: true,
             message: "Analysis started successfully",
-            data: result,
+            data: result.analysis,
          });
       } catch (error) {
          next(error);
@@ -117,12 +117,17 @@ class AnalysisController {
       try {
          const { page = 1, limit = 10, status, sentiment } = req.query;
 
-         // This would require a more complex query to get analyses across all user's brands
-         // For now, we'll return a message indicating this endpoint needs implementation
-         res.status(501).json({
-            success: false,
-            message:
-               "This endpoint is not yet implemented. Use /brands/:brandId/analyses instead.",
+         const result = await analysisService.getUserAnalyses(req.user.id, {
+            page,
+            limit,
+            status,
+            sentiment,
+         });
+
+         res.status(200).json({
+            success: true,
+            data: result.analyses,
+            pagination: result.pagination,
          });
       } catch (error) {
          next(error);

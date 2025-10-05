@@ -8,21 +8,6 @@ const brandSchema = new mongoose.Schema(
          trim: true,
          maxlength: [100, "Brand name cannot exceed 100 characters"],
       },
-      description: {
-         type: String,
-         trim: true,
-         maxlength: [500, "Description cannot exceed 500 characters"],
-      },
-      website: {
-         type: String,
-         trim: true,
-         match: [/^https?:\/\/.+/, "Please enter a valid website URL"],
-      },
-      industry: {
-         type: String,
-         trim: true,
-         maxlength: [50, "Industry cannot exceed 50 characters"],
-      },
       keywords: [
          {
             type: String,
@@ -30,19 +15,31 @@ const brandSchema = new mongoose.Schema(
             maxlength: [50, "Keyword cannot exceed 50 characters"],
          },
       ],
-      isActive: {
-         type: Boolean,
-         default: true,
+      status: {
+         type: String,
+         enum: ["active", "monitoring", "inactive"],
+         default: "active",
       },
       createdBy: {
          type: mongoose.Schema.Types.ObjectId,
          ref: "User",
          required: true,
       },
-      lastAnalyzed: Date,
+      lastAnalysisAt: Date,
       totalAnalyses: {
          type: Number,
          default: 0,
+      },
+      averageSentiment: {
+         type: String,
+         enum: ["positive", "neutral", "negative", "mixed"],
+         default: "neutral",
+      },
+      sentimentScore: {
+         type: Number,
+         min: 0,
+         max: 100,
+         default: 50,
       },
       settings: {
          redditLimit: {
@@ -71,23 +68,8 @@ const brandSchema = new mongoose.Schema(
 // Indexes for better query performance
 brandSchema.index({ name: 1 });
 brandSchema.index({ createdBy: 1 });
-brandSchema.index({ isActive: 1 });
+brandSchema.index({ status: 1 });
 brandSchema.index({ createdAt: -1 });
-
-// Virtual for brand status
-brandSchema.virtual("status").get(function () {
-   if (!this.isActive) return "inactive";
-   if (this.totalAnalyses === 0) return "never_analyzed";
-   if (this.lastAnalyzed) {
-      const daysSinceLastAnalysis = Math.floor(
-         (Date.now() - this.lastAnalyzed.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (daysSinceLastAnalysis > 30) return "stale";
-      if (daysSinceLastAnalysis > 7) return "needs_update";
-      return "fresh";
-   }
-   return "unknown";
-});
 
 // Transform output
 brandSchema.set("toJSON", {

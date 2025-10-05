@@ -56,19 +56,23 @@ class RedditService {
    formatRedditPosts(posts) {
       return posts.map((post) => {
          const data = post.data;
+
+         // Truncate content to reduce token usage
+         const content = data.selftext || "";
+         const truncatedContent =
+            content.length > 200 ? content.substring(0, 200) + "..." : content;
+
          return {
+            id: data.id,
             title: data.title || "",
-            content: data.selftext || "",
+            content: truncatedContent,
             author: data.author || "unknown",
             subreddit: data.subreddit || "",
-            url: `https://reddit.com${data.permalink}`,
             score: data.score || 0,
-            numComments: data.num_comments || 0,
-            createdAt: new Date(data.created_utc * 1000),
-            postId: data.id,
             upvoteRatio: data.upvote_ratio || 0,
-            isOver18: data.over_18 || false,
-            flair: data.link_flair_text || null,
+            createdAt: new Date(data.created_utc * 1000),
+            url: `https://reddit.com${data.permalink}`,
+            permalink: data.permalink,
          };
       });
    }
